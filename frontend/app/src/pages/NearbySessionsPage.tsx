@@ -1,6 +1,6 @@
 /* eslint-disable */
 import React, { useState, useCallback } from 'react';
-import { MapPin, Navigation, Map, Loader2, Crosshair, Search } from 'lucide-react';
+import { MapPin, Navigation, Map, Loader2, Crosshair, Search, Globe, Pencil } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { sessionsApi, type LocationSuggestion } from '../api/sessions';
 import type { Session } from '../types';
@@ -12,8 +12,10 @@ import DistanceSelector, { DISTANCE_OPTIONS } from '../components/DistanceSelect
 import Swal from 'sweetalert2';
 
 type LocationMode = 'current' | 'custom';
+type PermissionState = 'prompt' | 'granted' | 'denied';
 
 export const NearbySessionsPage: React.FC = () => {
+  const [permissionState, setPermissionState] = useState<PermissionState>('prompt');
   const { user } = useAuth();
 
   // Location mode
@@ -37,8 +39,8 @@ export const NearbySessionsPage: React.FC = () => {
   const [searched, setSearched] = useState(false);
   const [searchError, setSearchError] = useState('');
 
-  // Detect browser location on mount
-  const detectLocation = useCallback(async () => {
+  // Detect browser location — only called when user clicks "Use My Location"
+  const detectLocation = useCallback(async (): Promise<boolean> => {
     setLocationLoading(true);
     setLocationError(false);
     try {
@@ -46,28 +48,41 @@ export const NearbySessionsPage: React.FC = () => {
       if (coords) {
         setBrowserCoords(coords);
         setLocationMode('current');
+        return true;
       } else {
         setLocationError(true);
-        Swal.fire({
-          title: 'Location Unavailable',
-          text: 'Unable to detect your current location. Please use the custom location option.',
-          icon: 'warning',
-          background: '#12121e',
-          color: '#f8fafc',
-          confirmButtonColor: '#8b5cf6',
-        });
+        return false;
       }
     } catch {
       setLocationError(true);
+      return false;
     } finally {
       setLocationLoading(false);
     }
   }, []);
 
-  // Trigger on mount
-  React.useEffect(() => {
-    detectLocation();
+  const handleUseCurrentLocation = useCallback(async () => {
+    const success = await detectLocation();
+    if (success) {
+      setPermissionState('granted');
+    } else {
+      setPermissionState('denied');
+      setLocationMode('custom');
+      Swal.fire({
+        title: 'Location Unavailable',
+        text: 'Unable to detect your current location. Please use the manual entry option.',
+        icon: 'warning',
+        background: '#12121e',
+        color: '#f8fafc',
+        confirmButtonColor: '#8b5cf6',
+      });
+    }
   }, [detectLocation]);
+
+  const handleEnterManually = useCallback(() => {
+    setPermissionState('denied');
+    setLocationMode('custom');
+  }, []);
 
   const handleSearch = useCallback(async () => {
     let lat: number;
@@ -169,6 +184,97 @@ export const NearbySessionsPage: React.FC = () => {
 
   const searchCoords = getSearchCoords();
 
+  // ── Permission prompt screen ──
+  if (permissionState === 'prompt') {
+    return (
+      <div className="page-transition flex-1 max-w-2xl w-full mx-auto px-6 py-16 flex flex-col items-center justify-center">
+        <div className="text-center space-y-3 mb-10">
+          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-br from-brand-indigo/20 to-brand-violet/20 border border-brand-indigo/20 mb-2">
+            <Map className="h-8 w-8 text-brand-rose" />
+          </div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white">
+            Find Nearby Sessions
+          </h1>
+          <p className="text-sm text-slate-400 font-light max-w-md mx-auto">
+            Discover study sessions happening near you. Choose how you'd like to share or enter your location.
+          </p>
+        </div>
+
+        <div className="w-full max-w-md space-y-4">
+          <button
+            onClick={handleUseCurrentLocation}
+            disabled={locationLoading}
+            className="w-full group relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 p-6 text-left transition-all hover:border-brand-indigo/50 hover:bg-slate-900/80 hover:shadow-lg hover:shadow-brand-indigo/5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {locationLoading ? (
+              <div className="flex items-center space-x-4">
+                <div className="flex-shrink-0 h-12 w-12 rounded-xl bg-slate-800 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 text-slate-400 animate-spin" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-slate-200">Detecting your location...</p>
+                  <p className="text-xs text-slate-500">Requesting GPS coordinates</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="absolute -top-6 -right-6 h-20 w-20 rounded-full bg-brand-indigo/5 blur-xl transition-all group-hover:bg-brand-indigo/10" />
+                <div className="flex items-center space-x-4 relative">
+                  <div className="flex-shrink-0 h-12 w-12 rounded-xl bg-gradient-to-br from-brand-indigo/20 to-brand-violet/20 border border-brand-indigo/20 flex items-center justify-center">
+                    <Globe className="h-6 w-6 text-brand-indigo" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">
+                      Use My Current Location
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Allow your browser to detect your GPS position automatically
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center space-x-2 text-[10px] text-slate-600">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand-emerald" />
+                  <span>Your location is never stored on our servers</span>
+                </div>
+              </>
+            )}
+          </button>
+
+          <div className="flex items-center space-x-4">
+            <div className="flex-1 h-px bg-slate-800" />
+            <span className="text-xs text-slate-600 font-semibold">OR</span>
+            <div className="flex-1 h-px bg-slate-800" />
+          </div>
+
+          <button
+            onClick={handleEnterManually}
+            className="w-full group relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 p-6 text-left transition-all hover:border-slate-700 hover:bg-slate-900/80"
+          >
+            <div className="flex items-center space-x-4">
+              <div className="flex-shrink-0 h-12 w-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center">
+                <Pencil className="h-6 w-6 text-slate-400" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">
+                  Enter Location Manually
+                </p>
+                <p className="text-xs text-slate-500">
+                  Search for a city, area, or landmark to set your location
+                </p>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        <p className="mt-10 text-[10px] text-slate-700 text-center max-w-xs">
+          Your location is used only for this search and is not stored or shared.
+          You can revoke access anytime in your browser settings.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Search panel (after user has chosen) ──
   return (
     <div className="page-transition flex-1 max-w-7xl w-full mx-auto px-6 py-10 space-y-8">
       {/* Header */}
