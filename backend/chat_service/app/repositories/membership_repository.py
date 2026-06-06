@@ -1,0 +1,97 @@
+from __future__ import annotations
+from datetime import UTC, datetime
+from uuid import UUID
+
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+from app.models.group_membership import GroupMembership
+from app.core.group_service_client import GroupServiceClient
+
+
+class MembershipRepository:
+    def __init__(self, db: AsyncIOMotorDatabase, group_service_client: GroupServiceClient | None = None) -> None:
+        self._col = db["group_memberships"]
+        self._group_service_client = group_service_client
+
+    async def upsert(self, group_id: UUID, user_id: UUID, role: str = "member", chat_enabled: bool = True) -> None:
+        now = datetime.now(UTC)
+        await self._col.update_one(
+            {"group_id": str(group_id), "user_id": str(user_id)},
+            {
+                "$set": {
+                    "role": role,
+                    "chat_enabled": chat_enabled,
+                    "is_active": True,
+                    "updated_at": now,
+                },
+                "$setOnInsert": {"_id": str(__import__("uuid").uuid4()), "created_at": now},
+            },
+            upsert=True,
+        )
+
+    async def deactivate(self, group_id: UUID, user_id: UUID) -> None:
+        await self._col.update_one(
+            {"group_id": str(group_id), "user_id": str(user_id)},
+            {"$set": {"is_active": False, "updated_at": datetime.now(UTC)}},
+        )
+
+    async def deactivate_group(self, group_id: UUID) -> None:
+        """Called when group is deleted — deactivates all memberships."""
+        await self._col.update_many(
+            {"group_id": str(group_id)},
+            {"$set": {"is_active": False, "updated_at": datetime.now(UTC)}},
+        )
+
+    async def set_chat_enabled(self, group_id: UUID, enabled: bool) -> None:
+        await self._col.update_many(
+            {"group_id": str(group_id)},
+            {"$set": {"chat_enabled": enabled, "updated_at": datetime.now(UTC)}},
+        )
+
+    async def get(self, group_id: UUID, user_id: UUID) -> GroupMembership | None:
+        doc = await self._col.find_one(
+            {"group_id": str(group_id), "user_id": str(user_id), "is_active": True}
+        )
+        return self._to_model(doc) if doc else None
+
+    async def is_member(self, group_id: UUID, user_id: UUID) -> bool:
+        doc = await self._col.find_one(
+            {"group_id": str(group_id), "user_id": str(user_id), "is_active": True},
+            projection={"_id": 1},
+        )
+        return doc is not None
+
+    async def get_with_fallback(self, group_id: UUID, user_id: UUID) -> GroupMembership | None:
+        """Get membership from local cache, fall back to group_service if not found.
+
+        This is critical for resilience: if the Kafka consumer lags or fails,
+        users can still send messages by querying group_service directly.
+        """
+        # First try local cache
+        doc = await self._col.find_one(
+            {"group_id": str(group_id), "user_id": str(user_id), "is_active": True}
+        )
+        if doc is not None:
+            return self._to_model(doc)
+
+        # Fallback to group_service if not found locally
+        if self._group_service_client is None:
+            return None
+
+        membership = await self._group_service_client.check_membership(group_id, user_id)
+        if membership is not None:
+            # Cache it for future requests
+            await self.upsert(group_id, user_id, role=membership.role, chat_enabled=membership.chat_enabled)
+        return membership
+
+    @staticmethod
+    def _to_model(doc: dict) -> GroupMembership:
+        doc["id"] = doc.pop("_id")
+        doc["group_id"] = UUID(doc["group_id"])
+        doc["user_id"] = UUID(doc["user_id"])
+        return GroupMembership.model_validate(doc)
+    
+
+    
+    
+

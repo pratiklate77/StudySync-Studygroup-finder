@@ -1,0 +1,387 @@
+# Complete StudySync Microservices Stack Orchestration
+# Run from repo root: docker compose up -d
+
+services:
+  # --- INFRASTRUCTURE ---
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: studysync-postgres
+    environment:
+      POSTGRES_USER: studysync
+      POSTGRES_PASSWORD: studysync_dev
+      POSTGRES_DB: identity_db
+    ports:
+      - "5442:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studysync -d identity_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - studysync
+
+  postgres_group:
+    image: postgres:16-alpine
+    container_name: studysync-postgres-group
+    environment:
+      POSTGRES_USER: studysync
+      POSTGRES_PASSWORD: studysync_dev
+      POSTGRES_DB: group_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_group_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studysync -d group_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - studysync
+
+  postgres_admin:
+    image: postgres:16-alpine
+    container_name: studysync-postgres-admin
+    environment:
+      POSTGRES_USER: studysync
+      POSTGRES_PASSWORD: studysync_dev
+      POSTGRES_DB: admin_db
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres_admin_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studysync -d admin_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - studysync
+
+  postgres_payment:
+    image: postgres:16-alpine
+    container_name: studysync-postgres-payment
+    environment:
+      POSTGRES_USER: studysync
+      POSTGRES_PASSWORD: studysync_dev
+      POSTGRES_DB: payment_db
+    ports:
+      - "5445:5432"
+    volumes:
+      - postgres_payment_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studysync -d payment_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - studysync
+
+  postgres_verification:
+    image: postgres:16-alpine
+    container_name: studysync-postgres-verification
+    environment:
+      POSTGRES_USER: studysync
+      POSTGRES_PASSWORD: studysync_dev
+      POSTGRES_DB: verification_db
+    ports:
+      - "5446:5432"
+    volumes:
+      - postgres_verification_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studysync -d verification_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - studysync
+
+  postgres_notification:
+    image: postgres:16-alpine
+    container_name: studysync-postgres-notification
+    environment:
+      POSTGRES_USER: studysync
+      POSTGRES_PASSWORD: studysync_dev
+      POSTGRES_DB: notification_db
+    ports:
+      - "5447:5432"
+    volumes:
+      - postgres_notification_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studysync -d notification_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - studysync
+
+  postgres_recommendation:
+    image: postgres:16-alpine
+    container_name: studysync-postgres-recommendation
+    environment:
+      POSTGRES_USER: studysync
+      POSTGRES_PASSWORD: studysync_dev
+      POSTGRES_DB: recommendation_db
+    ports:
+      - "5448:5432"
+    volumes:
+      - postgres_recommendation_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studysync -d recommendation_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - studysync
+
+  redis:
+    image: redis:7-alpine
+    container_name: studysync-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - studysync
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: studysync-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - studysync
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: studysync-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
+      KAFKA_LOG_DIRS: /tmp/kafka-logs
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - studysync
+
+  mongo:
+    image: mongo:7
+    container_name: studysync-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - studysync
+
+  # --- MICROSERVICES ---
+
+  identity_service:
+    build: ./identity_service
+    container_name: studysync-identity
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ./identity_service/.env
+    networks:
+      - studysync
+
+  session_service:
+    build: ./session_service
+    container_name: studysync-session
+    ports:
+      - "8001:8001"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ./session_service/.env
+    networks:
+      - studysync
+
+  group_service:
+    build: ./group_service
+    container_name: studysync-group
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres_group:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ./group_service/.env
+    networks:
+      - studysync
+
+  chat_service:
+    build: ./chat_service
+    container_name: studysync-chat
+    ports:
+      - "8003:8003"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ./chat_service/.env
+    networks:
+      - studysync
+
+  admin_service:
+    build: ./admin_service
+    container_name: studysync-admin
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres_admin:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ./admin_service/.env
+    networks:
+      - studysync
+
+  payment_service:
+    build: ./payment_service
+    container_name: studysync-payment
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres_payment:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ./payment_service/.env
+    networks:
+      - studysync
+
+  verification_service:
+    build: ./verification_service
+    container_name: studysync-verification
+    ports:
+      - "8006:8006"
+    depends_on:
+      postgres_verification:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ./verification_service/.env
+    networks:
+      - studysync
+
+  notification_service:
+    build: ./notification_service
+    container_name: studysync-notification
+    ports:
+      - "8007:8007"
+    depends_on:
+      postgres_notification:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ./notification_service/.env
+    networks:
+      - studysync
+
+  recommendation_service:
+    build: ./recommendation_service
+    container_name: studysync-recommendation
+    ports:
+      - "8008:8008"
+    depends_on:
+      postgres_recommendation:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ./recommendation_service/.env
+    networks:
+      - studysync
+
+volumes:
+  postgres_data:
+  postgres_group_data:
+  postgres_admin_data:
+  postgres_payment_data:
+  postgres_verification_data:
+  postgres_notification_data:
+  postgres_recommendation_data:
+  redis_data:
+  zookeeper_data:
+  mongo_data:
+
+networks:
+  studysync:
+    driver: bridge

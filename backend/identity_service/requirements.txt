@@ -1,0 +1,31 @@
+# Core FastAPI and web framework
+fastapi>=0.110,<1
+uvicorn[standard]>=0.27,<1
+jinja2>=3.1.0,<4
+
+# Database - PostgreSQL and MongoDB
+sqlalchemy[asyncio]>=2.0,<3
+asyncpg>=0.29,<1
+alembic>=1.13,<2
+motor>=3.3,<4
+
+# Data validation and settings
+pydantic[email]>=2.6,<3
+pydantic-settings>=2.2,<3
+
+# Authentication and security
+PyJWT>=2.8,<3
+passlib[bcrypt]>=1.7.4,<2
+bcrypt==4.0.1
+
+# Caching and messaging
+redis[hiredis]>=5.0,<6
+aiokafka>=0.10,<1
+
+# HTTP client for inter-service communication
+httpx>=0.26,<1
+
+# File upload support
+python-multipart>=0.0.9,<1
+python-magic>=0.4.27,<1
+aiofiles>=23.2,<24

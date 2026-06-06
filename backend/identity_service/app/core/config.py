@@ -1,0 +1,44 @@
+from __future__ import annotations
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    database_url: str = (
+        "postgresql+asyncpg://user:pass@localhost:5432/identity_db"
+    )
+    redis_url: str = "redis://localhost:6379/0"
+
+    kafka_bootstrap_servers: str = "kafka:29092"
+    kafka_client_id: str = "identity-service"
+    kafka_user_events_topic: str = "USER_EVENTS"
+    kafka_rating_events_topic: str = "RATING_EVENTS"
+    kafka_consumer_group: str = "identity-service-ratings"
+    kafka_send_timeout_seconds: float = 5.0
+    kafka_startup_timeout_seconds: float = 10.0
+    kafka_startup_max_retries: int = 5
+    kafka_startup_retry_delay_seconds: float = 3.0
+    kafka_consumer_session_timeout_ms: int = 30000
+    kafka_consumer_heartbeat_interval_ms: int = 10000
+    kafka_consumer_request_timeout_ms: int = 40000
+    kafka_consumer_retry_backoff_ms: int = 1000
+    kafka_circuit_breaker_failure_threshold: int = 3
+    kafka_circuit_breaker_recovery_timeout_seconds: float = 30.0
+    kafka_retry_base_delay_seconds: float = 2.0
+    kafka_retry_max_delay_seconds: float = 30.0
+
+    jwt_secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 15
+    jwt_refresh_token_expire_days: int = 7
+
+    top_tutors_cache_key: str = "marketplace:top_tutors"
+    top_tutors_cache_ttl_seconds: int = 300
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

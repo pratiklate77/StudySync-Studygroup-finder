@@ -1,0 +1,62 @@
+from __future__ import annotations
+from datetime import datetime, timedelta, timezone
+from typing import Any
+from uuid import UUID, uuid4
+
+import jwt
+from passlib.context import CryptContext
+
+from app.core.config import get_settings
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def hash_password(plain: str) -> str:
+    return pwd_context.hash(plain)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+
+
+def create_access_token(subject: UUID, role: str | None = None, expires_delta: timedelta | None = None) -> str:
+    settings = get_settings()
+    expire = datetime.now(timezone.utc) + (
+        expires_delta
+        if expires_delta is not None
+        else timedelta(minutes=settings.jwt_access_token_expire_minutes)
+    )
+    to_encode: dict[str, Any] = {"sub": str(subject), "exp": expire, "type": "access"}
+    if role:
+        to_encode["role"] = role
+    return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def create_refresh_token(subject: UUID) -> tuple[str, str]:
+    """Returns (token, jti). jti is stored in Redis to allow revocation."""
+    settings = get_settings()
+    jti = str(uuid4())
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.jwt_refresh_token_expire_days)
+    to_encode: dict[str, Any] = {"sub": str(subject), "exp": expire, "type": "refresh", "jti": jti}
+    token = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return token, jti
+
+
+def decode_token(token: str) -> dict[str, Any]:
+    settings = get_settings()
+    return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+
+
+def create_email_verification_token(user_id: UUID) -> str:
+    settings = get_settings()
+    expire = datetime.now(timezone.utc) + timedelta(hours=24)
+    payload: dict[str, Any] = {"sub": str(user_id), "exp": expire, "type": "email_verify"}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_email_verification_token(token: str) -> UUID:
+    settings = get_settings()
+    payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    if payload.get("type") != "email_verify":
+        raise ValueError("invalid token type")
+    return UUID(payload["sub"])
