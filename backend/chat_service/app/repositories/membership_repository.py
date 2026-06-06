@@ -62,27 +62,27 @@ class MembershipRepository:
         return doc is not None
 
     async def get_with_fallback(self, group_id: UUID, user_id: UUID) -> GroupMembership | None:
-        """Get membership from local cache, fall back to group_service if not found.
-
-        This is critical for resilience: if the Kafka consumer lags or fails,
-        users can still send messages by querying group_service directly.
-        """
-        # First try local cache
+        """Get membership from local cache, fall back to group_service if not found."""
         doc = await self._col.find_one(
             {"group_id": str(group_id), "user_id": str(user_id), "is_active": True}
         )
         if doc is not None:
             return self._to_model(doc)
 
-        # Fallback to group_service if not found locally
         if self._group_service_client is None:
             return None
 
         membership = await self._group_service_client.check_membership(group_id, user_id)
         if membership is not None:
-            # Cache it for future requests
             await self.upsert(group_id, user_id, role=membership.role, chat_enabled=membership.chat_enabled)
         return membership
+
+    async def list_member_ids(self, group_id: UUID) -> list[UUID]:
+        cursor = self._col.find(
+            {"group_id": str(group_id), "is_active": True},
+            projection={"user_id": 1, "_id": 0},
+        )
+        return [UUID(doc["user_id"]) async for doc in cursor]
 
     @staticmethod
     def _to_model(doc: dict) -> GroupMembership:

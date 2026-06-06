@@ -15,6 +15,7 @@ from app.kafka.circuit_breaker import CircuitBreaker
 from app.kafka.fallback_store import InMemoryFallbackStore
 from app.kafka.producer import ResilientKafkaProducer
 from app.kafka.retry_worker import KafkaRetryWorker
+from app.services.session_reminder_scheduler import SessionReminderScheduler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("session-service")
@@ -114,6 +115,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 logger.warning("Continuing without VerificationEventsConsumer")
             app.state.verification_consumer = verification_consumer
 
+            reminder_scheduler = SessionReminderScheduler(producer)
+            await reminder_scheduler.start()
+            app.state.reminder_scheduler = reminder_scheduler
+            logger.info("SessionReminderScheduler started")
+
         except Exception as exc:
             logger.error("Kafka initialization failed: %s", exc)
             if not settings.STANDALONE_MODE:
@@ -133,6 +139,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await app.state.user_consumer.stop()
         if app.state.verification_consumer:
             await app.state.verification_consumer.stop()
+        reminder_scheduler = getattr(app.state, "reminder_scheduler", None)
+        if reminder_scheduler:
+            await reminder_scheduler.stop()
         if app.state.kafka_producer:
             retry_worker = getattr(app.state, "kafka_retry_worker", None)
             retry_task = getattr(app.state, "kafka_retry_task", None)

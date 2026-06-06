@@ -12,6 +12,7 @@ async def publish_message_sent(
     sender_id: UUID,
     message_id: UUID,
     preview: str,
+    receiver_ids: list[UUID] | None = None,
 ) -> None:
     await producer.publish(
         topic=settings.kafka_chat_events_topic,
@@ -21,6 +22,7 @@ async def publish_message_sent(
             "sender_id": str(sender_id),
             "message_id": str(message_id),
             "preview": preview[:100],
+            "receiver_ids": [str(r) for r in receiver_ids] if receiver_ids else [],
         },
         key=str(group_id).encode("utf-8"),
     )

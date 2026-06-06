@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { Notification } from '../types';
 import { notificationsApi } from '../api/notifications';
 import { useAuth } from './AuthContext';
@@ -7,32 +7,33 @@ import Swal from 'sweetalert2';
 
 interface NotificationContextType {
   notifications: Notification[];
-  unreadCount: number;
+  newCount: number;
   loading: boolean;
   refreshNotifications: () => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  onPanelOpen: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [newCount, setNewCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
   const { isAuthenticated, isAdmin, loading: authLoading } = useAuth();
 
-  const refreshNotifications = async () => {
+  const refreshNotifications = useCallback(async () => {
     if (!isAuthenticated || isAdmin) return;
     try {
-      const data = await notificationsApi.getAll();
+      const [data, countRes] = await Promise.all([
+        notificationsApi.getAll(),
+        notificationsApi.getNewCount(),
+      ]);
       setNotifications(data);
-      
-      const countRes = await notificationsApi.getUnreadCount();
-      
-      // Trigger dynamic sweetalert toasts if there are new unread notifications
-      if (countRes.count > unreadCount) {
-        const diff = countRes.count - unreadCount;
+
+      if (countRes.count > newCount && newCount !== 0) {
+        const diff = countRes.count - newCount;
         Swal.fire({
           toast: true,
           position: 'bottom-end',
@@ -44,43 +45,52 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           color: '#f8fafc',
         });
       }
-      setUnreadCount(countRes.count);
+      setNewCount(countRes.count);
     } catch {
       // Quietly ignore network failures in notifications polling
     }
-  };
+  }, [isAuthenticated, isAdmin, newCount]);
 
   useEffect(() => {
     if (isAuthenticated && !isAdmin && !authLoading) {
       setNotifLoading(true);
       refreshNotifications().finally(() => setNotifLoading(false));
 
-      // Poll every 10 seconds for real-time reactive updates
       const interval = setInterval(refreshNotifications, 10000);
       return () => clearInterval(interval);
     } else {
       setNotifications([]);
-      setUnreadCount(0);
+      setNewCount(0);
     }
   }, [isAuthenticated, isAdmin, authLoading]);
 
-  const markAsRead = async (id: string) => {
+  // Called when user opens the notification panel — clears the badge
+  const onPanelOpen = useCallback(async () => {
+    if (!isAuthenticated || isAdmin) return;
+    try {
+      await notificationsApi.markAllSeen();
+      setNewCount(0);
+    } catch {
+      // ignore
+    }
+  }, [isAuthenticated, isAdmin]);
+
+  const markAsRead = useCallback(async (id: string) => {
     try {
       await notificationsApi.markAsRead(id);
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
       );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch (err: any) {
-      // Ignore
+    } catch {
+      // ignore
     }
-  };
+  }, []);
 
-  const markAllAsRead = async () => {
+  const markAllAsRead = useCallback(async () => {
     try {
       await notificationsApi.markAllAsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setUnreadCount(0);
+      setNewCount(0);
       Swal.fire({
         toast: true,
         position: 'top-end',
@@ -91,20 +101,21 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         background: '#12121e',
         color: '#f8fafc',
       });
-    } catch (err: any) {
-      // Ignore
+    } catch {
+      // ignore
     }
-  };
+  }, []);
 
   return (
     <NotificationContext.Provider
       value={{
         notifications,
-        unreadCount,
+        newCount,
         loading: notifLoading,
         refreshNotifications,
         markAsRead,
         markAllAsRead,
+        onPanelOpen,
       }}
     >
       {children}

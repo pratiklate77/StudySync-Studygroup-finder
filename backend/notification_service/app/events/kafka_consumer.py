@@ -13,38 +13,32 @@ from app.core.config import Settings
 
 logger = logging.getLogger(__name__)
 
-# Maps event_type → user_id field name in the event payload
-_USER_ID_FIELD: dict[str, str] = {
-    "USER_REGISTERED": "user_id",
-    "USER_CREATED": "user_id",
-    "SESSION_CREATED": "host_id",
-    "SESSION_CANCELLED": "host_id",
-    "SESSION_REMINDER": "user_id",
-    "GROUP_JOINED": "user_id",
-    "GROUP_CREATED": "owner_id",
-    "CHAT_MESSAGE_SENT": "sender_id",
+# Events with a single direct recipient - maps event_type → user_id field
+_SINGLE_RECIPIENT: dict[str, str] = {
+    # Session
+    "JOIN_REQUEST_ACCEPTED": "user_id",
+    "JOIN_REQUEST_REJECTED": "user_id",
+    # Payment
     "PAYMENT_SUCCESS": "user_id",
     "PAYMENT_FAILED": "user_id",
-    "TUTOR_VERIFIED": "user_id",
+    # Admin
+    "USER_RESTRICTED": "user_id",
+    "USER_UNRESTRICTED": "user_id",
+    # Group
+    "GROUP_INVITATION": "invited_user_id",
+    # Tutor verification (dual field names from verification_service)
+    "TUTOR_APPROVED": "user_id",
     "TUTOR_REJECTED": "user_id",
-    "TUTOR_RECOMMENDED": "tutor_id",
-    "VERIFICATION_SUBMITTED": "user_id",
-    "VERIFICATION_APPROVED": "user_id",
-    "VERIFICATION_REJECTED": "user_id",
-    "SESSION_RATED": "tutorId",
-    "RATING_SUBMITTED": "tutorId",
-    "SESSION_STATUS_CHANGED": "user_id",
-    "SESSION_STARTED": "user_id",
-    "SESSION_ENROLLED": "user_id",
+}
+
+# Events that fan-out to a list of recipients stored under a payload field
+_MULTI_RECIPIENT: dict[str, str] = {
+    "SESSION_STARTING_SOON": "participant_ids",
+    "SESSION_CANCELLED": "participant_ids",
 }
 
 
 class NotificationEventConsumer:
-    """
-    Multi-topic Kafka consumer that routes events to the notification service.
-    Uses a single consumer group across all topics for simplicity.
-    """
-
     def __init__(self, settings: Settings, session_factory, redis, ws_manager=None) -> None:
         self._settings = settings
         self._session_factory = session_factory
@@ -61,8 +55,7 @@ class NotificationEventConsumer:
             self._settings.kafka_payment_events_topic,
             self._settings.kafka_verification_events_topic,
             self._settings.kafka_chat_events_topic,
-            self._settings.kafka_recommendation_events_topic,
-            self._settings.kafka_rating_events_topic,
+            self._settings.kafka_admin_events_topic,
         ]
 
     async def start(self) -> bool:
@@ -107,58 +100,77 @@ class NotificationEventConsumer:
                     data: dict[str, Any] = msg.value
                     if not isinstance(data, dict):
                         continue
-                    event_type = data.get("event_type")
+                    event_type: str | None = data.get("event_type")
                     if not event_type:
                         continue
 
-                    user_id_field = _USER_ID_FIELD.get(event_type)
-                    if not user_id_field:
+                    # Normalise TUTOR_VERIFIED → TUTOR_APPROVED for consistent naming
+                    if event_type == "TUTOR_VERIFIED":
+                        event_type = "TUTOR_APPROVED"
+                        data = {**data, "event_type": "TUTOR_APPROVED"}
+
+                    if event_type == "CHAT_MESSAGE_SENT":
+                        await self._handle_chat_message(data, msg.offset)
                         continue
 
-                    raw_user_id = data.get(user_id_field)
-                    if not raw_user_id:
+                    if event_type in _MULTI_RECIPIENT:
+                        await self._handle_multi_recipient(event_type, data, msg.offset)
                         continue
 
-                    user_id = uuid.UUID(str(raw_user_id))
-                    source_event_id = f"{event_type}:{data.get('request_id') or data.get('payment_id') or raw_user_id}:{msg.offset}"
-
-                    async with self._session_factory() as session:
-                        service = NotificationService(
-                            session=session,
-                            redis=self._redis,
-                            settings=self._settings,
-                            ws_manager=self._ws_manager,
-                        )
-                        await service.create_from_event(
-                            user_id=user_id,
-                            event_type=event_type,
-                            context=data,
-                            source_event_id=source_event_id,
-                        )
-
-                    logger.info("Processed %s for user %s", event_type, user_id)
+                    if event_type in _SINGLE_RECIPIENT:
+                        user_id_field = _SINGLE_RECIPIENT[event_type]
+                        raw_uid = data.get(user_id_field) or data.get("userId")
+                        if not raw_uid:
+                            continue
+                        user_id = uuid.UUID(str(raw_uid))
+                        source_id = f"{event_type}:{data.get('request_id') or data.get('payment_id') or raw_uid}:{msg.offset}"
+                        async with self._session_factory() as session:
+                            svc = NotificationService(session=session, redis=self._redis, settings=self._settings, ws_manager=self._ws_manager)
+                            await svc.create_from_event(user_id=user_id, event_type=event_type, context=data, source_event_id=source_id)
 
                 except Exception:
                     logger.exception("Failed processing event from topic %s offset %s", msg.topic, msg.offset)
-                    try:
-                        async with self._session_factory() as session:
-                            service = NotificationService(
-                                session=session,
-                                redis=self._redis,
-                                settings=self._settings,
-                                ws_manager=self._ws_manager,
-                            )
-                            await service.record_failed_event(
-                                event_type=data.get("event_type", "UNKNOWN"),
-                                payload=data,
-                                error="Consumer processing error",
-                            )
-                    except Exception:
-                        logger.exception("Failed to record failed event")
 
         except asyncio.CancelledError:
             logger.info("NotificationEventConsumer task cancelled")
             raise
+
+    async def _handle_multi_recipient(self, event_type: str, data: dict[str, Any], offset: int) -> None:
+        from app.services.notification_service import NotificationService
+        participant_ids: list = data.get("participant_ids") or []
+        for raw_uid in participant_ids:
+            try:
+                user_id = uuid.UUID(str(raw_uid))
+                source_id = f"{event_type}:{data.get('session_id') or raw_uid}:{raw_uid}:{offset}"
+                async with self._session_factory() as session:
+                    svc = NotificationService(session=session, redis=self._redis, settings=self._settings, ws_manager=self._ws_manager)
+                    await svc.create_from_event(user_id=user_id, event_type=event_type, context=data, source_event_id=source_id)
+            except Exception:
+                logger.exception("Failed processing %s for participant %s", event_type, raw_uid)
+
+    async def _handle_chat_message(self, data: dict[str, Any], offset: int) -> None:
+        """Only notify receivers who are offline (not in ws active connections)."""
+        from app.services.notification_service import NotificationService
+        receiver_ids: list = data.get("receiver_ids") or []
+        for receiver_id_raw in receiver_ids:
+            try:
+                receiver_id = uuid.UUID(str(receiver_id_raw))
+            except Exception:
+                continue
+
+            # Skip if user is currently connected via WebSocket
+            if self._ws_manager and receiver_id in self._ws_manager.active_connections:
+                continue
+
+            source_id = f"CHAT_MESSAGE_RECEIVED:{data.get('message_id') or receiver_id_raw}:{receiver_id_raw}:{offset}"
+            async with self._session_factory() as session:
+                svc = NotificationService(session=session, redis=self._redis, settings=self._settings, ws_manager=self._ws_manager)
+                await svc.create_from_event(
+                    user_id=receiver_id,
+                    event_type="CHAT_MESSAGE_RECEIVED",
+                    context=data,
+                    source_event_id=source_id,
+                )
 
     async def stop(self) -> None:
         if self._task:

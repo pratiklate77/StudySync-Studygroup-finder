@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
@@ -75,6 +76,15 @@ class NotificationRepository:
         )
         return result.scalar() or 0
 
+    async def get_new_count(self, user_id: UUID, since: datetime | None) -> int:
+        """Count notifications received after last_notification_seen_at."""
+        from datetime import timezone
+        q = select(func.count()).select_from(Notification).where(Notification.user_id == user_id)
+        if since is not None:
+            aware = since.replace(tzinfo=timezone.utc) if since.tzinfo is None else since
+            q = q.where(Notification.created_at > aware)
+        return (await self._session.execute(q)).scalar() or 0
+
     async def mark_read(self, notification_id: uuid.UUID, user_id: UUID) -> bool:
         from datetime import datetime, timezone
 
@@ -132,3 +142,12 @@ class NotificationPreferenceRepository:
         await self._session.flush()
         await self._session.refresh(pref)
         return pref
+
+    async def update_seen_at(self, user_id: UUID, seen_at: datetime) -> None:
+        pref = await self._session.get(NotificationPreference, user_id)
+        if not pref:
+            pref = NotificationPreference(user_id=user_id, last_notification_seen_at=seen_at)
+            self._session.add(pref)
+        else:
+            pref.last_notification_seen_at = seen_at
+        await self._session.flush()

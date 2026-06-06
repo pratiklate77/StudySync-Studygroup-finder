@@ -17,6 +17,10 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "title": "Session Cancelled",
         "body": "The session '{title}' has been cancelled.",
     },
+    "SESSION_STARTING_SOON": {
+        "title": "Session Starting Soon",
+        "body": "Your session '{title}' starts in 30 minutes.",
+    },
     "SESSION_REMINDER": {
         "title": "Session Reminder",
         "body": "Your session '{title}' starts in 30 minutes.",
@@ -33,6 +37,10 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "title": "New Message",
         "body": "You have a new message in '{group_name}'.",
     },
+    "CHAT_MESSAGE_RECEIVED": {
+        "title": "New Message",
+        "body": "You have a new unread message.",
+    },
     "PAYMENT_SUCCESS": {
         "title": "Payment Successful",
         "body": "Your payment of ${amount} was processed successfully.",
@@ -44,6 +52,10 @@ TEMPLATES: dict[str, dict[str, str]] = {
     "TUTOR_VERIFIED": {
         "title": "Verification Approved",
         "body": "Congratulations! Your tutor profile has been verified.",
+    },
+    "TUTOR_APPROVED": {
+        "title": "Tutor Application Approved",
+        "body": "Congratulations! Your tutor verification has been approved.",
     },
     "TUTOR_REJECTED": {
         "title": "Verification Rejected",
@@ -72,6 +84,26 @@ TEMPLATES: dict[str, dict[str, str]] = {
     "RATING_SUBMITTED": {
         "title": "New Session Rating Received",
         "body": "A student rated your completed session with {rating} stars.",
+    },
+    "JOIN_REQUEST_ACCEPTED": {
+        "title": "Join Request Accepted",
+        "body": "Your request to join '{group_name}' has been accepted.",
+    },
+    "JOIN_REQUEST_REJECTED": {
+        "title": "Join Request Rejected",
+        "body": "Your request to join '{group_name}' was declined.",
+    },
+    "GROUP_INVITATION": {
+        "title": "Group Invitation",
+        "body": "You've been invited to join '{group_name}'.",
+    },
+    "USER_RESTRICTED": {
+        "title": "Account Restricted",
+        "body": "Your account has been restricted. Reason: {reason}",
+    },
+    "USER_UNRESTRICTED": {
+        "title": "Account Restriction Lifted",
+        "body": "Your account restriction has been removed.",
     },
 }
 

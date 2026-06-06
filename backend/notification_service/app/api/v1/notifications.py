@@ -3,12 +3,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import get_current_user_id, get_notification_service
-from app.schemas.notification import NotificationListResponse, UnreadCountResponse
+from app.schemas.notification import NotificationListResponse, NotificationRead, UnreadCountResponse, NewCountResponse
 
 router = APIRouter()
 
 
-@router.get("", response_model=NotificationListResponse)
+@router.get("", response_model=list[NotificationRead])
+@router.get("/", response_model=list[NotificationRead], include_in_schema=False)
 async def list_notifications(
     current_user_id: UUID = Depends(get_current_user_id),
     page: int = 1,
@@ -16,17 +17,18 @@ async def list_notifications(
     unread_only: bool = False,
     notification_type: str | None = None,
     service = Depends(get_notification_service),
-) -> NotificationListResponse:
-    return await service.list_notifications(
+) -> list[NotificationRead]:
+    result = await service.list_notifications(
         user_id=current_user_id,
         page=page,
         per_page=per_page,
         unread_only=unread_only,
         notification_type=notification_type,
     )
+    return result.items
 
 
-@router.get("/unread", response_model=UnreadCountResponse)
+@router.get("/unread-count", response_model=UnreadCountResponse)
 async def get_unread_count(
     current_user_id: UUID = Depends(get_current_user_id),
     service = Depends(get_notification_service),
@@ -34,7 +36,23 @@ async def get_unread_count(
     return await service.get_unread_count(current_user_id)
 
 
-@router.patch("/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT)
+@router.get("/new-count", response_model=NewCountResponse)
+async def get_new_count(
+    current_user_id: UUID = Depends(get_current_user_id),
+    service = Depends(get_notification_service),
+) -> NewCountResponse:
+    return await service.get_new_count(current_user_id)
+
+
+@router.post("/seen-all", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_all_seen(
+    current_user_id: UUID = Depends(get_current_user_id),
+    service = Depends(get_notification_service),
+) -> None:
+    await service.mark_all_seen(current_user_id)
+
+
+@router.post("/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT)
 async def mark_notification_read(
     notification_id: UUID,
     current_user_id: UUID = Depends(get_current_user_id),
@@ -45,7 +63,7 @@ async def mark_notification_read(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
 
 
-@router.patch("/read", response_model=dict[str, int])
+@router.post("/read-all", response_model=dict[str, int])
 async def mark_all_notifications_read(
     current_user_id: UUID = Depends(get_current_user_id),
     service = Depends(get_notification_service),

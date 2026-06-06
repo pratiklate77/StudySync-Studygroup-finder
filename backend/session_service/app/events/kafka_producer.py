@@ -8,6 +8,56 @@ from app.kafka.producer import ResilientKafkaProducer
 logger = logging.getLogger(__name__)
 
 
+async def publish_session_starting_soon(
+    producer: ResilientKafkaProducer,
+    *,
+    session_id: UUID,
+    title: str,
+    participant_ids: list[UUID],
+    scheduled_time: datetime,
+) -> None:
+    try:
+        await producer.publish(
+            topic="SESSION_EVENTS",
+            value={
+                "event_type": "SESSION_STARTING_SOON",
+                "session_id": str(session_id),
+                "title": title,
+                "participant_ids": [str(p) for p in participant_ids],
+                "scheduled_time": scheduled_time.isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+            key=str(session_id).encode(),
+        )
+        logger.info("Published SESSION_STARTING_SOON session=%s participants=%d", session_id, len(participant_ids))
+    except Exception:
+        logger.warning("Failed to publish SESSION_STARTING_SOON session=%s", session_id)
+
+
+async def publish_session_cancelled(
+    producer: ResilientKafkaProducer,
+    *,
+    session_id: UUID,
+    title: str,
+    participant_ids: list[UUID],
+) -> None:
+    try:
+        await producer.publish(
+            topic="SESSION_EVENTS",
+            value={
+                "event_type": "SESSION_CANCELLED",
+                "session_id": str(session_id),
+                "title": title,
+                "participant_ids": [str(p) for p in participant_ids],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+            key=str(session_id).encode(),
+        )
+        logger.info("Published SESSION_CANCELLED session=%s participants=%d", session_id, len(participant_ids))
+    except Exception:
+        logger.warning("Failed to publish SESSION_CANCELLED session=%s", session_id)
+
+
 async def publish_session_enrolled(
     producer: ResilientKafkaProducer,
     *,

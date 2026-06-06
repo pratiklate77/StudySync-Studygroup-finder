@@ -45,6 +45,34 @@ def group_deleted_payload(group_id: UUID, owner_id: UUID) -> dict:
     }
 
 
+def join_request_accepted_payload(group_id: UUID, group_name: str, user_id: UUID) -> dict:
+    return {
+        "event_type": "JOIN_REQUEST_ACCEPTED",
+        "group_id": str(group_id),
+        "group_name": group_name,
+        "user_id": str(user_id),
+    }
+
+
+def join_request_rejected_payload(group_id: UUID, group_name: str, user_id: UUID) -> dict:
+    return {
+        "event_type": "JOIN_REQUEST_REJECTED",
+        "group_id": str(group_id),
+        "group_name": group_name,
+        "user_id": str(user_id),
+    }
+
+
+def group_invitation_payload(group_id: UUID, group_name: str, invited_user_id: UUID, inviter_id: UUID) -> dict:
+    return {
+        "event_type": "GROUP_INVITATION",
+        "group_id": str(group_id),
+        "group_name": group_name,
+        "invited_user_id": str(invited_user_id),
+        "inviter_id": str(inviter_id),
+    }
+
+
 # --- Publisher ---
 
 async def publish_event(

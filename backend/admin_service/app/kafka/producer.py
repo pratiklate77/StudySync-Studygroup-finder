@@ -106,6 +106,33 @@ class AdminKafkaProducer:
         )
         return await self._publish_or_store(event, store_on_failure=True)
 
+    async def publish_user_restricted(self, *, user_id: str, reason: str | None = None) -> bool:
+        event_data = {
+            "event_type": "USER_RESTRICTED",
+            "user_id": user_id,
+            "reason": reason or "",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        event = EventEnvelope(
+            topic=self._settings.kafka_admin_events_topic,
+            key=user_id.encode(),
+            value=event_data,
+        )
+        return await self._publish_or_store(event, store_on_failure=True)
+
+    async def publish_user_unrestricted(self, *, user_id: str) -> bool:
+        event_data = {
+            "event_type": "USER_UNRESTRICTED",
+            "user_id": user_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        event = EventEnvelope(
+            topic=self._settings.kafka_admin_events_topic,
+            key=user_id.encode(),
+            value=event_data,
+        )
+        return await self._publish_or_store(event, store_on_failure=True)
+
     async def retry_event(self, event: EventEnvelope) -> bool:
         """Retry publishing a failed event."""
         return await self._publish_or_store(event, store_on_failure=False)

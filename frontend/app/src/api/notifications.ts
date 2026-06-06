@@ -2,23 +2,28 @@ import { apiFetch } from './client';
 import type { Notification } from '../types';
 
 export const notificationsApi = {
-  getAll: () => 
+  getAll: () =>
     apiFetch<Notification[]>('/api/v1/notifications/', {
       method: 'GET',
     }),
 
-  getUnreadCount: () => 
-    apiFetch<{ count: number }>('/api/v1/notifications/unread-count', {
+  getNewCount: () =>
+    apiFetch<{ count: number }>('/api/v1/notifications/new-count', {
       method: 'GET',
     }),
 
-  markAsRead: (notificationId: string) => 
-    apiFetch<{ success: boolean }>(`/api/v1/notifications/${notificationId}/read`, {
+  markAllSeen: () =>
+    apiFetch<void>('/api/v1/notifications/seen-all', {
       method: 'POST',
     }),
 
-  markAllAsRead: () => 
-    apiFetch<{ success: boolean }>('/api/v1/notifications/read-all', {
+  markAsRead: (notificationId: string) =>
+    apiFetch<void>(`/api/v1/notifications/${notificationId}/read`, {
       method: 'POST',
-    })
+    }),
+
+  markAllAsRead: () =>
+    apiFetch<{ updated_count: number }>('/api/v1/notifications/read-all', {
+      method: 'POST',
+    }),
 };

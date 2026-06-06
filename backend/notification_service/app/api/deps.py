@@ -38,9 +38,15 @@ def get_redis(request: Request) -> Redis:
     return redis_client
 
 
+def get_ws_manager(request: Request):
+    return getattr(request.app.state, "ws_manager", None)
+
+
 def get_notification_service(
+    request: Request,
     session: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
     settings: Settings = Depends(get_settings),
 ) -> NotificationService:
-    return NotificationService(session=session, redis=redis, settings=settings)
+    ws_manager = getattr(request.app.state, "ws_manager", None)
+    return NotificationService(session=session, redis=redis, settings=settings, ws_manager=ws_manager)

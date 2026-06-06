@@ -19,6 +19,7 @@ from app.schemas.notification import (
     NotificationPreferenceUpdate,
     NotificationRead,
     UnreadCountResponse,
+    NewCountResponse,
 )
 
 logger = logging.getLogger("notification-service")
@@ -78,6 +79,21 @@ class NotificationService:
         await self._redis.setex(cache_key, self._settings.unread_count_cache_ttl_seconds, str(count))
         return UnreadCountResponse(count=count)
 
+    async def get_new_count(self, user_id: UUID) -> NewCountResponse:
+        """Count notifications received after last_notification_seen_at."""
+        pref = await self._pref_repo.get_by_user_id(user_id)
+        since = pref.last_notification_seen_at if pref else None
+        count = await self._notif_repo.get_new_count(user_id, since)
+        return NewCountResponse(count=count)
+
+    async def mark_all_seen(self, user_id: UUID) -> None:
+        """Update last_notification_seen_at to now — clears the new badge count."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        await self._pref_repo.update_seen_at(user_id, now)
+        await self._session.commit()
+        await self._redis.delete(f"new_count:{user_id}")
+
     async def mark_read(self, notification_id: UUID, user_id: UUID) -> bool:
         updated = await self._notif_repo.mark_read(notification_id, user_id)
         if updated:
@@ -86,10 +102,13 @@ class NotificationService:
         return updated
 
     async def mark_all_read(self, user_id: UUID) -> int:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
         count = await self._notif_repo.mark_all_read(user_id)
-        if count:
-            await self._session.commit()
-            await self._redis.delete(f"unread_count:{user_id}")
+        await self._pref_repo.update_seen_at(user_id, now)
+        await self._session.commit()
+        await self._redis.delete(f"unread_count:{user_id}")
+        await self._redis.delete(f"new_count:{user_id}")
         return count
 
     async def delete_notification(self, notification_id: UUID, user_id: UUID) -> bool:

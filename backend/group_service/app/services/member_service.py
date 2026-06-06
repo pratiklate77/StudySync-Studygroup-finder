@@ -4,7 +4,14 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.events.kafka_producer import publish_event, user_joined_payload, user_left_payload
+from app.events.kafka_producer import (
+    publish_event,
+    user_joined_payload,
+    user_left_payload,
+    join_request_accepted_payload,
+    join_request_rejected_payload,
+    group_invitation_payload,
+)
 from app.kafka.producer import ResilientKafkaProducer
 from app.models.group_member import GroupMember, MemberRole
 from app.repositories.group_repository import GroupRepository
@@ -138,3 +145,65 @@ class MemberService:
 
         can_send = group.chat_enabled
         return PermissionsCheck(can_send_message=can_send, role=member.role)
+
+    async def accept_join_request(
+        self, group_id: UUID, requester_id: UUID, target_user_id: UUID,
+        producer: ResilientKafkaProducer, settings: Settings
+    ) -> MemberRead:
+        group = require_active_group(await self._groups.get_by_id(group_id))
+        requester_member = await self._members.get(group_id, requester_id)
+        require_admin_or_owner(group, requester_member, requester_id)
+
+        existing = await self._members.get(group_id, target_user_id)
+        if existing:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="User is already a member")
+
+        count = await self._groups.member_count(group_id)
+        if count >= group.max_members:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Group has reached maximum capacity")
+
+        member = GroupMember(group_id=group_id, user_id=target_user_id, role=MemberRole.member)
+        created = await self._members.add(member)
+        if created is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="User is already a member")
+        await self._session.commit()
+        await self._session.refresh(created)
+
+        await publish_event(
+            producer, settings,
+            payload=join_request_accepted_payload(group_id, group.name, target_user_id),
+            key=str(group_id),
+        )
+        return MemberRead.model_validate(created)
+
+    async def reject_join_request(
+        self, group_id: UUID, requester_id: UUID, target_user_id: UUID,
+        producer: ResilientKafkaProducer, settings: Settings
+    ) -> None:
+        group = require_active_group(await self._groups.get_by_id(group_id))
+        requester_member = await self._members.get(group_id, requester_id)
+        require_admin_or_owner(group, requester_member, requester_id)
+
+        await publish_event(
+            producer, settings,
+            payload=join_request_rejected_payload(group_id, group.name, target_user_id),
+            key=str(group_id),
+        )
+
+    async def invite_user(
+        self, group_id: UUID, inviter_id: UUID, invited_user_id: UUID,
+        producer: ResilientKafkaProducer, settings: Settings
+    ) -> None:
+        group = require_active_group(await self._groups.get_by_id(group_id))
+        inviter_member = await self._members.get(group_id, inviter_id)
+        require_admin_or_owner(group, inviter_member, inviter_id)
+
+        existing = await self._members.get(group_id, invited_user_id)
+        if existing:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="User is already a member")
+
+        await publish_event(
+            producer, settings,
+            payload=group_invitation_payload(group_id, group.name, invited_user_id, inviter_id),
+            key=str(group_id),
+        )

@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     kafka_chat_events_topic: str = "CHAT_EVENTS"
     kafka_recommendation_events_topic: str = "RECOMMENDATION_EVENTS"
     kafka_rating_events_topic: str = "RATING_EVENTS"
+    kafka_admin_events_topic: str = "ADMIN_EVENTS"
 
     # Kafka topics to produce
     kafka_notification_events_topic: str = "NOTIFICATION_EVENTS"

@@ -5,7 +5,7 @@ import json
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.events.kafka_producer import publish_session_enrolled
+from app.events.kafka_producer import publish_session_enrolled, publish_session_cancelled
 from app.models.session import GeoPoint, Session, SessionStatus, SessionType
 from app.repositories.session_repository import SessionRepository
 from app.repositories.verified_tutor_repository import VerifiedTutorRepository
@@ -77,7 +77,7 @@ class SessionService:
         updated = await self._sessions.update(session_id, fields)
         return session_to_read(updated)  # type: ignore[arg-type]
 
-    async def cancel_session(self, session_id: UUID, requester_id: UUID) -> SessionRead:
+    async def cancel_session(self, session_id: UUID, requester_id: UUID, kafka_producer=None) -> SessionRead:
         session = await self._get_or_404(session_id)
         if session.host_id != requester_id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the host can cancel this session")
@@ -89,6 +89,13 @@ class SessionService:
                 detail="Completed sessions cannot be cancelled",
             )
         updated = await self._sessions.set_status(session_id, SessionStatus.cancelled)
+        if kafka_producer and updated and updated.participants:
+            await publish_session_cancelled(
+                kafka_producer,
+                session_id=session_id,
+                title=updated.title,
+                participant_ids=list(updated.participants),
+            )
         return session_to_read(updated)  # type: ignore[arg-type]
 
     async def update_status(

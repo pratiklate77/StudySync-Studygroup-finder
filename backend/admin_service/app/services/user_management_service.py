@@ -17,9 +17,11 @@ class UserManagementService:
         self,
         user_repo: UserRepository,
         audit_repo: AuditRepository,
+        kafka_producer=None,
     ):
         self.user_repo = user_repo
         self.audit_repo = audit_repo
+        self.kafka_producer = kafka_producer
 
     async def get_users_list(
         self,
@@ -60,6 +62,8 @@ class UserManagementService:
             target_id=str(user_id),
             reason=reason,
         )
+        if self.kafka_producer:
+            await self.kafka_producer.publish_user_restricted(user_id=str(user_id), reason=reason)
         return True
 
     async def activate_user(
@@ -80,4 +84,6 @@ class UserManagementService:
             target_id=str(user_id),
             reason=reason,
         )
+        if self.kafka_producer:
+            await self.kafka_producer.publish_user_unrestricted(user_id=str(user_id))
         return True

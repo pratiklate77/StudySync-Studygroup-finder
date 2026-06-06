@@ -151,10 +151,12 @@ async def update_session(
 @router.patch("/{session_id}/cancel", response_model=SessionRead)
 async def cancel_session(
     session_id: UUID,
+    request: Request,
     user_id: UUID = Depends(get_current_user_id),
     service: SessionService = Depends(get_session_service),
 ) -> SessionRead:
-    return await service.cancel_session(session_id, requester_id=user_id)
+    kafka_producer = get_kafka_producer(request)
+    return await service.cancel_session(session_id, requester_id=user_id, kafka_producer=kafka_producer)
 
 
 @router.patch("/{session_id}/status", response_model=SessionRead)

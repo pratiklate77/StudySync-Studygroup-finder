@@ -68,6 +68,14 @@ class MessageService:
         })
 
         # Publish to Kafka — fire and forget (resilient producer handles failures)
+        # Fetch group member ids for offline notification targeting
+        member_ids: list[UUID] = []
+        try:
+            member_ids = await self._memberships.list_member_ids(group_id)
+        except Exception:
+            pass
+        receiver_ids = [mid for mid in member_ids if mid != sender_id]
+
         await publish_message_sent(
             self._producer,
             self._settings,
@@ -75,6 +83,7 @@ class MessageService:
             sender_id=sender_id,
             message_id=message.id,
             preview=content,
+            receiver_ids=receiver_ids,
         )
 
         return MessageRead(

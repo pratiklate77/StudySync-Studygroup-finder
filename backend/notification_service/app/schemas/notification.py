@@ -28,6 +28,10 @@ class UnreadCountResponse(BaseModel):
     count: int
 
 
+class NewCountResponse(BaseModel):
+    count: int
+
+
 class NotificationPreferenceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Boolean
+from sqlalchemy import Boolean, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,3 +16,4 @@ class NotificationPreference(Base):
     push_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     in_app_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     notification_types: Mapped[dict] = mapped_column(JSONB, default=dict)
+    last_notification_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -165,6 +165,21 @@ class SessionRepository:
         cursor = self._col.find({}).sort("scheduled_time", -1).skip(offset).limit(limit)
         return [self._to_model(doc) async for doc in cursor if doc]
 
+    async def find_starting_between(
+        self,
+        start: datetime,
+        end: datetime,
+        status: SessionStatus = SessionStatus.scheduled,
+    ) -> list[Session]:
+        cursor = self._col.find({
+            "status": status.value,
+            "scheduled_time": {
+                "$gte": start.isoformat(),
+                "$lte": end.isoformat(),
+            },
+        })
+        return [self._to_model(doc) async for doc in cursor if doc]
+
     async def get_participants(self, session_id: UUID) -> list[UUID] | None:
         doc = await self._col.find_one(
             {"_id": str(session_id)},

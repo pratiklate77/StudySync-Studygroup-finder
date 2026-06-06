@@ -84,6 +84,9 @@ class PaymentService:
             if payment.payment_method.lower() == "wallet":
                 payer_wallet = await self._get_or_create_wallet(payment.user_id, session)
                 if payer_wallet.balance < payment.amount:
+                    payment.status = PaymentStatus.FAILED
+                    await session.commit()
+                    await self._publish_payment_event("PAYMENT_FAILED", payment)
                     return None
                 payer_wallet.balance -= payment.amount
                 await self._create_transaction(

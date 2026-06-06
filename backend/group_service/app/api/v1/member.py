@@ -8,7 +8,7 @@ from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.kafka.producer import ResilientKafkaProducer
 from app.schemas.group import GroupRead
-from app.schemas.member import KickRequest, MemberRead, PromoteDemoteRequest
+from app.schemas.member import KickRequest, MemberRead, PromoteDemoteRequest, JoinRequestAction, InviteRequest
 from app.services.member_service import MemberService
 
 router = APIRouter()
@@ -80,6 +80,51 @@ async def demote_member(
     service: MemberService = Depends(get_member_service),
 ) -> MemberRead:
     return await service.demote_member(group_id, requester_id=user_id, target_user_id=payload.user_id)
+
+
+@router.post("/{group_id}/join-requests/accept", response_model=MemberRead)
+async def accept_join_request(
+    group_id: UUID,
+    payload: JoinRequestAction,
+    user_id: UUID = Depends(get_current_user_id),
+    service: MemberService = Depends(get_member_service),
+    producer: ResilientKafkaProducer = Depends(get_kafka_producer),
+    settings: Settings = Depends(get_settings),
+) -> MemberRead:
+    return await service.accept_join_request(
+        group_id, requester_id=user_id, target_user_id=payload.user_id,
+        producer=producer, settings=settings,
+    )
+
+
+@router.post("/{group_id}/join-requests/reject", status_code=204)
+async def reject_join_request(
+    group_id: UUID,
+    payload: JoinRequestAction,
+    user_id: UUID = Depends(get_current_user_id),
+    service: MemberService = Depends(get_member_service),
+    producer: ResilientKafkaProducer = Depends(get_kafka_producer),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    await service.reject_join_request(
+        group_id, requester_id=user_id, target_user_id=payload.user_id,
+        producer=producer, settings=settings,
+    )
+
+
+@router.post("/{group_id}/invite", status_code=204)
+async def invite_user(
+    group_id: UUID,
+    payload: InviteRequest,
+    user_id: UUID = Depends(get_current_user_id),
+    service: MemberService = Depends(get_member_service),
+    producer: ResilientKafkaProducer = Depends(get_kafka_producer),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    await service.invite_user(
+        group_id, inviter_id=user_id, invited_user_id=payload.user_id,
+        producer=producer, settings=settings,
+    )
 
 
 # ── User-scoped endpoint ──────────────────────────────────────────────────────

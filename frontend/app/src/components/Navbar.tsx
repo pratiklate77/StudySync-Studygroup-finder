@@ -6,10 +6,16 @@ import { Bell, LogOut, BookOpen, User as UserIcon, LayoutDashboard, Shield, Map,
 
 export const Navbar: React.FC = () => {
   const { isAuthenticated, user, logout, isAdmin } = useAuth();
-  const { unreadCount, notifications, markAsRead } = useNotifications();
+  const { newCount, notifications, markAsRead, onPanelOpen } = useNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
+
+  const handleBellClick = async () => {
+    const opening = !showNotifications;
+    setShowNotifications(opening);
+    if (opening) await onPanelOpen();
+  };
 
   return (
     <nav className="sticky top-0 z-50 w-full glass-panel border-b border-slate-800 bg-slate-950/80 backdrop-blur-md px-6 py-4">
@@ -58,13 +64,13 @@ export const Navbar: React.FC = () => {
             <>
               {/* Notification bell icon dropdown */}
               <button 
-                onClick={() => setShowNotifications(!showNotifications)}
+                onClick={handleBellClick}
                 className="relative p-2 text-slate-400 hover:text-white hover:bg-slate-900 rounded-full transition-all"
               >
                 <Bell className="h-5.5 w-5.5" />
-                {unreadCount > 0 && (
+                {newCount > 0 && (
                   <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-rose text-[9px] font-bold text-white ring-2 ring-slate-950 animate-pulse">
-                    {unreadCount}
+                    {newCount > 99 ? '99+' : newCount}
                   </span>
                 )}
               </button>

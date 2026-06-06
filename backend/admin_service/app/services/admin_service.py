@@ -69,6 +69,7 @@ class AdminService:
         self.user_management_service = UserManagementService(
             user_repo=self.user_repo,
             audit_repo=self.audit_repo,
+            kafka_producer=kafka_producer,
         )
         self.tutor_service = TutorService(
             user_repo=self.user_repo,

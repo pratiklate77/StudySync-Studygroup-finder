@@ -24,6 +24,14 @@ class PromoteDemoteRequest(BaseModel):
     user_id: UUID
 
 
+class JoinRequestAction(BaseModel):
+    user_id: UUID
+
+
+class InviteRequest(BaseModel):
+    user_id: UUID
+
+
 # Internal API response schemas (used by Chat Service and other internal consumers)
 class MembershipCheck(BaseModel):
     is_member: bool
